@@ -1,8 +1,8 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/debian
 {
-	"name": "Alpine Dev",
-	"image": "alpine-dev:user",
+	"name": "Ubuntu Dev",
+	"image": "ubuntu-dev:user",
 	"customizations": {
 		"vscode": {
 			"extensions": [
