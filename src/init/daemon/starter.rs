@@ -47,6 +47,8 @@ pub fn start_process(ts: &mut JoinSet<Result<(), Box<dyn error::Error + Send + S
                                     }
                                 }
                             }
+                        } else {
+                            break 'autorestart;
                         }
                     },
                     result = child.wait() => {
