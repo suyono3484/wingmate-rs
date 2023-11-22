@@ -4,11 +4,13 @@ use std::error as std_error;
 use crate::init::error as wingmate_error;
 use nix::unistd::{access, AccessFlags};
 
+#[derive(Debug)]
 pub enum Command {
     ShellPrefixed(String),
     Direct(String)
 }
 
+#[derive(Debug)]
 pub struct Config {
     pub services: Vec<Command>,
 }

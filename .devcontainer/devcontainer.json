@@ -10,7 +10,8 @@
 				"dustypomerleau.rust-syntax",
 				"1YiB.rust-bundle",
 				"serayuzgur.crates",
-				"tamasfe.even-better-toml"
+				"tamasfe.even-better-toml",
+				"ms-azuretools.vscode-docker"
 			]
 		}
 	}
