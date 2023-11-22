@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 nix = {version = "0.27.1", features = ["process", "signal"]}
 tokio = { version = "1.34.0", features = ["full"] }
+tokio-util = "0.7.10"
