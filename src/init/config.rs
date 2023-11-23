@@ -1,9 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
-use std::io::{self, BufReader, BufRead};
+use std::io::{BufReader, BufRead};
 use std::error as std_error;
 use crate::init::error as wingmate_error;
 use nix::unistd::{access, AccessFlags};
+use lazy_static::lazy_static;
+use regex::Regex;
 
 #[derive(Debug)]
 pub enum Command {
@@ -15,6 +17,7 @@ pub enum Command {
 pub enum CronTimeFieldSpec {
     Any,
     Exact(u8),
+    MultiOccurrence(Vec<u8>),
     Every(u8)
 }
 
@@ -61,16 +64,8 @@ impl Config {
                         }
                     }
 
-                    // let cron = buf.join("cron");
-                    // if let Ok(cron_iter) = fs::read_dir(cron.as_path()) {
-                    //     for entry in cron_iter {
-                    //         if let Ok(_dirent) = entry {
-                    //             // read the cron file
-                    //         }
-                    //     }
-                    // }
-                    if let Ok(_crontab) = read_crontab(&mut buf) {
-
+                    if let Ok(_crontab) = Self::read_crontab(&mut buf) {
+                        //TODO: fix me! empty branch
                     }
                 } else {
                     // reserve for future use; when we have a centralized config file
@@ -85,16 +80,56 @@ impl Config {
         let config = Config { services: svc_commands };
         Ok(config)
     }
-}
 
-fn read_crontab(path: &mut PathBuf) -> Result<Vec<Crontab>, Box<dyn std_error::Error>> {
-    let cron_path = path.join("crontab");
+    fn read_crontab(path: &mut PathBuf) -> Result<Vec<Crontab>, Box<dyn std_error::Error>> {
+        lazy_static! {
+            static ref CRON_REGEX: Regex = Regex::new(
+                r"^\s*(?P<minute>\S+)\s+(?P<hour>\S+)\s+(?P<dom>\S+)\s+(?P<month>\S+)\s+(?P<dow>\S+)\s+(?P<command>\S.*\S)\s*$"
+            ).unwrap();
+        }
 
-    {
-        let f = fs::File::open(cron_path.as_path())?;
-        let _line_iter = BufReader::new(f).lines();
-    }
+        let cron_path = path.join("crontab");
     
+        {
+            let f = fs::File::open(cron_path.as_path())?;
+            for line in BufReader::new(f).lines() {
+                if let Ok(l) = line {
+                    let cap = CRON_REGEX.captures(&l).ok_or::<Box<dyn std_error::Error>>(wingmate_error::CronSyntaxError(String::from(&l)).into())?;
+                    
+                    let mut match_str = cap.name("minute").ok_or::<Box<dyn std_error::Error>>(wingmate_error::CronSyntaxError(String::from("cannot capture minute")).into())?;
+                    let _minute = Self::to_cron_time_field_spec(&match_str)?;
 
-    Err(wingmate_error::NoServiceOrCronFoundError.into())
+                    match_str = cap.name("hour").ok_or::<Box<dyn std_error::Error>>(wingmate_error::CronSyntaxError(String::from("cannot capture hour")).into())?;
+                    let _hour = Self::to_cron_time_field_spec(&match_str)?;
+                }
+            }
+        }
+        
+    
+        Err(wingmate_error::NoServiceOrCronFoundError.into())
+    }
+
+    fn to_cron_time_field_spec(match_str: &regex::Match) -> Result<CronTimeFieldSpec, Box<dyn std_error::Error>> {
+        let field = match_str.as_str();
+
+        if field == "*" {
+            return Ok(CronTimeFieldSpec::Any);
+        } else if field.starts_with("*/") {
+            let every = field[2..].parse::<u8>()?;
+            return Ok(CronTimeFieldSpec::Every(every));
+        } else if field.contains(",") {
+            let multi: Vec<&str> = field.split(",").collect();
+            let mut multi_occurrence: Vec<u8> = Vec::new();
+
+            for m in multi {
+                let ur = m.parse::<u8>()?;
+                multi_occurrence.push(ur);
+            }
+
+            return Ok(CronTimeFieldSpec::MultiOccurrence(multi_occurrence));
+        } else {
+            let n = field.parse::<u8>()?;
+            return Ok(CronTimeFieldSpec::Exact(n));
+        }
+    }
 }
