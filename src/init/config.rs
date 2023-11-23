@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::io::{self, BufReader, BufRead};
 use std::error as std_error;
 use crate::init::error as wingmate_error;
 use nix::unistd::{access, AccessFlags};
@@ -8,6 +9,23 @@ use nix::unistd::{access, AccessFlags};
 pub enum Command {
     ShellPrefixed(String),
     Direct(String)
+}
+
+#[derive(Debug)]
+pub enum CronTimeFieldSpec {
+    Any,
+    Exact(u8),
+    Every(u8)
+}
+
+#[derive(Debug)]
+pub struct Crontab {
+    pub minute: CronTimeFieldSpec,
+    pub hour: CronTimeFieldSpec,
+    pub day_of_month: CronTimeFieldSpec,
+    pub month: CronTimeFieldSpec,
+    pub day_of_week: CronTimeFieldSpec,
+    pub command: String,
 }
 
 #[derive(Debug)]
@@ -43,13 +61,16 @@ impl Config {
                         }
                     }
 
-                    let cron = buf.join("cron");
-                    if let Ok(cron_iter) = fs::read_dir(cron.as_path()) {
-                        for entry in cron_iter {
-                            if let Ok(_dirent) = entry {
-                                // read the cron file
-                            }
-                        }
+                    // let cron = buf.join("cron");
+                    // if let Ok(cron_iter) = fs::read_dir(cron.as_path()) {
+                    //     for entry in cron_iter {
+                    //         if let Ok(_dirent) = entry {
+                    //             // read the cron file
+                    //         }
+                    //     }
+                    // }
+                    if let Ok(_crontab) = read_crontab(&mut buf) {
+
                     }
                 } else {
                     // reserve for future use; when we have a centralized config file
@@ -64,4 +85,16 @@ impl Config {
         let config = Config { services: svc_commands };
         Ok(config)
     }
+}
+
+fn read_crontab(path: &mut PathBuf) -> Result<Vec<Crontab>, Box<dyn std_error::Error>> {
+    let cron_path = path.join("crontab");
+
+    {
+        let f = fs::File::open(cron_path.as_path())?;
+        let _line_iter = BufReader::new(f).lines();
+    }
+    
+
+    Err(wingmate_error::NoServiceOrCronFoundError.into())
 }
