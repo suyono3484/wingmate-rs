@@ -7,8 +7,9 @@ use std::error;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use std::sync::{Arc, Mutex};
+use crate::init::config;
 
-pub async fn start() -> Result<(), Box<dyn error::Error>> {
+pub async fn start(cfg: config::Config) -> Result<(), Box<dyn error::Error>> {
     let sync_flag = Arc::new(Mutex::new(false));
     let sig_sync_flag = sync_flag.clone();
 
@@ -24,7 +25,7 @@ pub async fn start() -> Result<(), Box<dyn error::Error>> {
     });
 
     //TODO: start the process starter
-    starter::start_process(&mut set, starter_cancel);
+    starter::start_services(&mut set, &cfg, starter_cancel)?;
 
     //TODO: spawn_blocking for waiter
     set.spawn_blocking(move || {

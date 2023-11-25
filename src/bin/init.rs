@@ -4,5 +4,10 @@ use wingmate_rs::init;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn error::Error>> {
-    init::start().await
+    if let Err(e) = init::start().await {
+        eprintln!("{}", e);
+        return Err(e);
+    }
+
+    Ok(())
 }

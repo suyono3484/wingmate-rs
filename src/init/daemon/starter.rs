@@ -1,5 +1,5 @@
 use tokio::task::JoinSet;
-use tokio::process::Command;
+use tokio::process::{Command, Child};
 use tokio_util::sync::CancellationToken;
 use tokio::select;
 use tokio::io::Result as tokio_result;
@@ -10,17 +10,33 @@ use std::error;
 use nix::sys::signal::{kill, Signal};
 use nix::errno::Errno;
 use nix::unistd::Pid;
+use crate::init::config;
+use crate::init::error::NoShellAvailableError;
 
 
-pub fn start_process(ts: &mut JoinSet<Result<(), Box<dyn error::Error + Send + Sync>>>, cancel: CancellationToken) {
-    for _j in 0..5 {
+pub fn start_services(ts: &mut JoinSet<Result<(), Box<dyn error::Error + Send + Sync>>>, cfg: &config::Config, cancel: CancellationToken)
+    -> Result<(), Box<dyn error::Error>> {
+
+    for svc_ in cfg.get_service_iter() {
+        let shell: String = cfg.get_shell().ok_or::<Box<dyn error::Error>>(NoShellAvailableError.into())?;
+        let svc = svc_.clone();
+        // if let config::Command::ShellPrefixed(_) = svc {
+        //     shell = cfg.get_shell().ok_or::<Box<dyn error::Error>>(NoShellAvailableError.into())?;
+        // }
         let cancel = cancel.clone();
         ts.spawn(async move {
             'autorestart: loop {
-                let mut child = Command::new("sleep").arg("1")
-                    .spawn()
-                    .expect("failed to spawn");
-
+                let mut child: Child;
+                let shell = shell.clone();
+                let svc = svc.clone();
+                match svc {
+                    config::Command::Direct(c) => {
+                        child = Command::new(c).spawn().expect("change me");
+                    },
+                    config::Command::ShellPrefixed(s) => {
+                        child = Command::new(shell).arg(s).spawn().expect("change me");
+                    } 
+                }
 
                 select! {
                     _ = cancel.cancelled() => {
@@ -64,6 +80,8 @@ pub fn start_process(ts: &mut JoinSet<Result<(), Box<dyn error::Error + Send + S
 
     }
     println!("starter: spawning completed");
+
+    Ok(())
 }
 
 fn result_match(result: tokio_result<ExitStatus>) -> Result<(), Box<dyn error::Error + Send + Sync>> {
