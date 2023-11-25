@@ -11,30 +11,37 @@ use nix::sys::signal::{kill, Signal};
 use nix::errno::Errno;
 use nix::unistd::Pid;
 use crate::init::config;
-use crate::init::error::NoShellAvailableError;
+use crate::init::error::{NoShellAvailableError, SpawnError};
 
 
 pub fn start_services(ts: &mut JoinSet<Result<(), Box<dyn error::Error + Send + Sync>>>, cfg: &config::Config, cancel: CancellationToken)
     -> Result<(), Box<dyn error::Error>> {
 
     for svc_ in cfg.get_service_iter() {
-        let shell: String = cfg.get_shell().ok_or::<Box<dyn error::Error>>(NoShellAvailableError.into())?;
+        let mut shell: String = String::new();
+        if let config::Command::ShellPrefixed(_) = svc_ {
+            shell = cfg.get_shell().ok_or::<Box<dyn error::Error>>(NoShellAvailableError.into())?;
+        }
         let svc = svc_.clone();
-        // if let config::Command::ShellPrefixed(_) = svc {
-        //     shell = cfg.get_shell().ok_or::<Box<dyn error::Error>>(NoShellAvailableError.into())?;
-        // }
         let cancel = cancel.clone();
         ts.spawn(async move {
             'autorestart: loop {
                 let mut child: Child;
-                let shell = shell.clone();
                 let svc = svc.clone();
                 match svc {
                     config::Command::Direct(c) => {
-                        child = Command::new(c).spawn().expect("change me");
+                        let exp_str = c.clone();
+                        child = Command::new(c).spawn().map_err(|e| {
+                            Box::new(SpawnError(format!("{}: {}", exp_str, e)))
+                        })?;
                     },
                     config::Command::ShellPrefixed(s) => {
-                        child = Command::new(shell).arg(s).spawn().expect("change me");
+                        let shell = shell.clone();
+                        let exp_str = s.clone();
+                        let exp_shell = shell.clone();
+                        child = Command::new(shell).arg(s).spawn().map_err(|e| {
+                            Box::new(SpawnError(format!("{} {}: {}", exp_shell, exp_str, e)))
+                        })?;
                     } 
                 }
 
@@ -74,12 +81,12 @@ pub fn start_services(ts: &mut JoinSet<Result<(), Box<dyn error::Error + Send + 
                     },
                 }
             }
-            println!("starter: task completed");
+            dbg!("starter: task completed");
             Ok(())
         });
 
     }
-    println!("starter: spawning completed");
+    dbg!("starter: spawning completed");
 
     Ok(())
 }
@@ -95,8 +102,7 @@ fn result_match(result: tokio_result<ExitStatus>) -> Result<(), Box<dyn error::E
         }
     }
 
-    //TODO: remove me! this is for debug + tracing purpose
-    println!("starter: sleep exited");
+    dbg!("starter: sleep exited");
 
     Ok(())
 }
