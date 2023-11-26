@@ -11,7 +11,7 @@ use nix::sys::signal::{kill, Signal};
 use nix::errno::Errno;
 use nix::unistd::Pid;
 use crate::init::config;
-use crate::init::error::{NoShellAvailableError, SpawnError};
+use crate::init::error::{NoShellAvailableError, WingmateInitError};
 
 
 pub fn start_services(ts: &mut JoinSet<Result<(), Box<dyn error::Error + Send + Sync>>>, cfg: &config::Config, cancel: CancellationToken)
@@ -32,7 +32,7 @@ pub fn start_services(ts: &mut JoinSet<Result<(), Box<dyn error::Error + Send + 
                     config::Command::Direct(c) => {
                         let exp_str = c.clone();
                         child = Command::new(c).spawn().map_err(|e| {
-                            Box::new(SpawnError(format!("{}: {}", exp_str, e)))
+                            Box::new(WingmateInitError::SpawnError { source: e, message: exp_str })
                         })?;
                     },
                     config::Command::ShellPrefixed(s) => {
@@ -40,7 +40,7 @@ pub fn start_services(ts: &mut JoinSet<Result<(), Box<dyn error::Error + Send + 
                         let exp_str = s.clone();
                         let exp_shell = shell.clone();
                         child = Command::new(shell).arg(s).spawn().map_err(|e| {
-                            Box::new(SpawnError(format!("{} {}: {}", exp_shell, exp_str, e)))
+                            Box::new(WingmateInitError::SpawnError { source: e, message: format!("{} {}", exp_shell, exp_str) })
                         })?;
                     } 
                 }

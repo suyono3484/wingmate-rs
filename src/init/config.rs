@@ -42,7 +42,7 @@ pub struct Config {
 impl Config {
     pub fn find(search_path: Vec<String>) -> Result<Config, Box<dyn std_error::Error>> {
         if search_path.is_empty() {
-            return Err(wingmate_error::InvalidConfigSearchPathError.into());
+            return Err(wingmate_error::WingmateInitError::InvalidConfigSearchPath.into());
         }
 
         let mut svc_commands: Vec<Command> = Vec::new();
@@ -81,7 +81,7 @@ impl Config {
         }
 
         if svc_commands.is_empty() && cron.is_empty() {
-            return Err(wingmate_error::NoServiceOrCronFoundError.into());
+            return Err(wingmate_error::WingmateInitError::NoServiceOrCron.into());
         }
 
         let mut config = Config { 
