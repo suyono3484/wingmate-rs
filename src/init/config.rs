@@ -2,11 +2,23 @@ use std::fs;
 use std::env;
 use std::path::PathBuf;
 use std::io::{BufReader, BufRead};
-use std::error as std_error;
 use crate::init::error as wingmate_error;
 use nix::unistd::{access, AccessFlags};
 use lazy_static::lazy_static;
 use regex::Regex;
+use anyhow::Context;
+
+const CRON_REGEX_STR: &'static str = r"^\s*(?P<minute>\S+)\s+(?P<hour>\S+)\s+(?P<dom>\S+)\s+(?P<month>\S+)\s+(?P<dow>\S+)\s+(?P<command>\S.*\S)\s*$";
+const MINUTE: &'static str = "minute";
+const HOUR: &'static str = "hour";
+const DAY_OF_MONTH_ABBRV: &'static str = "dom";
+const DAY_OF_MONTH: &'static str = "day of month";
+const MONTH: &'static str = "month";
+const DAY_OF_WEEK_ABBRV: &'static str = "dow";
+const DAY_OF_WEEK: &'static str = "day of week";
+const COMMAND: &'static str = "command";
+const WINGMATE_SHELL_ENV: &'static str = "WINGMATE_SHELL";
+
 
 #[derive(Debug)]
 pub enum Command {
@@ -40,7 +52,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn find(search_path: Vec<String>) -> Result<Config, Box<dyn std_error::Error>> {
+    pub fn find(search_path: Vec<String>) -> Result<Config, wingmate_error::WingmateInitError> {
         if search_path.is_empty() {
             return Err(wingmate_error::WingmateInitError::InvalidConfigSearchPath.into());
         }
@@ -68,7 +80,7 @@ impl Config {
                         }
                     }
 
-                    cron = Self::read_crontab(&mut buf)?;
+                    cron = Self::read_crontab(&mut buf).map_err(|e| { wingmate_error::WingmateInitError::Cron { source: e }})?;
 
                     //TODO: need to include cron in the condition
                     if !svc_commands.is_empty() || !cron.is_empty() {
@@ -89,16 +101,14 @@ impl Config {
             cron,
             shell_path: None,
         };
-        config.find_shell()?;
+        config.find_shell().map_err(|e| { wingmate_error::WingmateInitError::FindShell { source: e } })?;
 
         Ok(config)
     }
 
-    fn read_crontab(path: &mut PathBuf) -> Result<Vec<Crontab>, Box<dyn std_error::Error>> {
+    fn read_crontab(path: &mut PathBuf) -> Result<Vec<Crontab>, wingmate_error::CronParseError> {
         lazy_static! {
-            static ref CRON_REGEX: Regex = Regex::new(
-                r"^\s*(?P<minute>\S+)\s+(?P<hour>\S+)\s+(?P<dom>\S+)\s+(?P<month>\S+)\s+(?P<dow>\S+)\s+(?P<command>\S.*\S)\s*$"
-            ).unwrap();
+            static ref CRON_REGEX: Regex = Regex::new(CRON_REGEX_STR).unwrap();
         }
 
         let cron_path = path.join("crontab");
@@ -107,45 +117,72 @@ impl Config {
         if let Ok(f) = fs::File::open(cron_path.as_path()) {
             for line in BufReader::new(f).lines() {
                 if let Ok(l) = line {
-                    let cap = CRON_REGEX.captures(&l).ok_or::<Box<dyn std_error::Error>>(wingmate_error::CronSyntaxError(String::from(&l)).into())?;
+                    let cap = CRON_REGEX.captures(&l).ok_or::<wingmate_error::CronParseError>(
+                        wingmate_error::CronParseError::InvalidSyntax(String::from(&l))
+                    )?;
                     
-                    let mut match_str = cap.name("minute").ok_or::<Box<dyn std_error::Error>>(
-                        wingmate_error::CronSyntaxError(format!("cannot capture minute in \"{}\"", &l)).into()
+                    let mut match_str = cap.name(MINUTE).ok_or::<wingmate_error::CronParseError>(
+                        wingmate_error::CronParseError::FieldMatch { cron_line: String::from(&l), field_name: String::from(MINUTE) }
                     )?;
                     let minute = Self::to_cron_time_field_spec(&match_str).map_err(|e| { 
-                        Box::new(wingmate_error::CronSyntaxError(format!("failed to parse minute \"{}\" in \"{}\": {}", &match_str.as_str(), &l, e)))
+                        wingmate_error::CronParseError::Parse {
+                            source: e,
+                            cron_line: String::from(&l),
+                            matched: String::from(match_str.as_str()),
+                            field_name: String::from(MINUTE)
+                        }
                     })?;
     
-                    match_str = cap.name("hour").ok_or::<Box<dyn std_error::Error>>(
-                        wingmate_error::CronSyntaxError(format!("cannot capture hour in \"{}\"", &l)).into()
+                    match_str = cap.name(HOUR).ok_or::<wingmate_error::CronParseError>(
+                        wingmate_error::CronParseError::FieldMatch { cron_line: String::from(&l), field_name: String::from(HOUR) }
                     )?;
                     let hour = Self::to_cron_time_field_spec(&match_str).map_err(|e| { 
-                        Box::new(wingmate_error::CronSyntaxError(format!("failed to parse hour \"{}\" in \"{}\": {}", &match_str.as_str(), &l, e)))
+                        wingmate_error::CronParseError::Parse {
+                            source: e,
+                            cron_line: String::from(&l),
+                            matched: String::from(match_str.as_str()),
+                            field_name: String::from(HOUR)
+                        }
                     })?;
     
-                    match_str = cap.name("dom").ok_or::<Box<dyn std_error::Error>>(
-                        wingmate_error::CronSyntaxError(format!("cannot capture day of month in \"{}\"", &l)).into()
+                    match_str = cap.name(DAY_OF_MONTH_ABBRV).ok_or::<wingmate_error::CronParseError>(
+                        wingmate_error::CronParseError::FieldMatch { cron_line: String::from(&l), field_name: String::from(DAY_OF_MONTH) }
                     )?;
                     let dom = Self::to_cron_time_field_spec(&match_str).map_err(|e| {
-                        Box::new(wingmate_error::CronSyntaxError(format!("failed to parse day of month \"{}\" in \"{}\": {}", &match_str.as_str(), &l, e)))
+                        wingmate_error::CronParseError::Parse {
+                            source: e,
+                            cron_line: String::from(&l),
+                            matched: String::from(match_str.as_str()),
+                            field_name: String::from(DAY_OF_MONTH)
+                        }
                     })?;
     
-                    match_str = cap.name("month").ok_or::<Box<dyn std_error::Error>>(
-                        wingmate_error::CronSyntaxError(format!("cannot capture month in \"{}\"", &l)).into()
+                    match_str = cap.name(MONTH).ok_or::<wingmate_error::CronParseError>(
+                        wingmate_error::CronParseError::FieldMatch { cron_line: String::from(&l), field_name: String::from(MONTH) }
                     )?;
                     let month = Self::to_cron_time_field_spec(&match_str).map_err(|e| {
-                        Box::new(wingmate_error::CronSyntaxError(format!("failed to parse month \"{}\" in \"{}\": {}", &match_str.as_str(), &l, e)))
+                        wingmate_error::CronParseError::Parse {
+                            source: e,
+                            cron_line: String::from(&l),
+                            matched: String::from(match_str.as_str()),
+                            field_name: String::from(MONTH)
+                        }
                     })?;
     
-                    match_str = cap.name("dow").ok_or::<Box<dyn std_error::Error>>(
-                        wingmate_error::CronSyntaxError(format!("cannot capture day of week in \"{}\"", &l)).into()
+                    match_str = cap.name(DAY_OF_WEEK_ABBRV).ok_or::<wingmate_error::CronParseError>(
+                        wingmate_error::CronParseError::FieldMatch { cron_line: String::from(&l), field_name: String::from(DAY_OF_WEEK) }
                     )?;
                     let dow = Self::to_cron_time_field_spec(&match_str).map_err(|e| {
-                        Box::new(wingmate_error::CronSyntaxError(format!("failed to parse day of week \"{}\" in \"{}\": {}", &match_str.as_str(), &l, e)))
+                        wingmate_error::CronParseError::Parse {
+                            source: e,
+                            cron_line: String::from(&l),
+                            matched: String::from(match_str.as_str()),
+                            field_name: String::from(DAY_OF_WEEK)
+                        }
                     })?;
     
-                    match_str = cap.name("command").ok_or::<Box<dyn std_error::Error>>(
-                        wingmate_error::CronSyntaxError(format!("cannot capture command in \"{}\"", &l)).into()
+                    match_str = cap.name(COMMAND).ok_or::<wingmate_error::CronParseError>(
+                        wingmate_error::CronParseError::FieldMatch { cron_line: String::from(&l), field_name: String::from(COMMAND) }
                     )?;
     
                     ret_vec.push(Crontab {
@@ -163,34 +200,34 @@ impl Config {
         Ok(ret_vec)
     }
 
-    fn to_cron_time_field_spec(match_str: &regex::Match) -> Result<CronTimeFieldSpec, Box<dyn std_error::Error>> {
+    fn to_cron_time_field_spec(match_str: &regex::Match) -> Result<CronTimeFieldSpec, anyhow::Error> {
         let field = match_str.as_str();
 
         if field == "*" {
             return Ok(CronTimeFieldSpec::Any);
         } else if field.starts_with("*/") {
-            let every = field[2..].parse::<u8>()?;
+            let every = field[2..].parse::<u8>().context("parsing on field matching \"every\" pattern")?;
             return Ok(CronTimeFieldSpec::Every(every));
         } else if field.contains(",") {
             let multi: Vec<&str> = field.split(",").collect();
             let mut multi_occurrence: Vec<u8> = Vec::new();
 
             for m in multi {
-                let ur = m.parse::<u8>()?;
+                let ur = m.parse::<u8>().context("parsing on field matching \"multi occurrence\" pattern")?;
                 multi_occurrence.push(ur);
             }
 
             return Ok(CronTimeFieldSpec::MultiOccurrence(multi_occurrence));
         } else {
-            let n = field.parse::<u8>()?;
+            let n = field.parse::<u8>().context("parsing on field matching \"exact\" pattern")?;
             return Ok(CronTimeFieldSpec::Exact(n));
         }
     }
 
-    fn find_shell(&mut self) -> Result<(), Box<dyn std_error::Error>> {
+    fn find_shell(&mut self) -> Result<(), wingmate_error::FindShellError> {
 
         let  shell: String;
-        match env::var("WINGMATE_SHELL") {
+        match env::var(WINGMATE_SHELL_ENV) {
             Ok(sh) => {
                 shell = sh;
             },
@@ -200,13 +237,15 @@ impl Config {
                         shell = String::from("sh");
                     },
                     env::VarError::NotUnicode(_) => {
-                        return Err(e.into());
+                        return Err(e).context(format!("reading {} env var", WINGMATE_SHELL_ENV))
+                            .map_err(|e| { wingmate_error::FindShellError::Other { source: e } })
                     }
                 }
             }
         }
 
-        let env_path  = env::var("PATH")?;
+        let env_path  = env::var("PATH").context("getting PATH env variable")
+            .map_err(|e| { wingmate_error::FindShellError::Other { source: e } })?;
         let vec_path: Vec<&str> = env_path.split(':').collect();
 
         for p in vec_path {
@@ -220,7 +259,7 @@ impl Config {
             }
         }
 
-        Err(wingmate_error::ShellNotFoundError(shell).into())
+        Err(wingmate_error::FindShellError::ShellNotFound)
     }
 
     pub fn get_service_iter(&self) -> std::slice::Iter<Command> {

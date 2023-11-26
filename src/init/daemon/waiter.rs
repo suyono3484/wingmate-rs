@@ -37,7 +37,6 @@ pub fn wait_all(flag: Arc<Mutex<bool>>, stop_sighandler: CancellationToken) {
                 }
             },
         }
-        // dbg!("sanity");
     }
 
 }

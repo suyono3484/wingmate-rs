@@ -1,9 +1,5 @@
 use thiserror::Error;
 
-use std::fmt;
-use std::error;
-
-
 #[derive(Error,Debug)]
 pub enum WingmateInitError {
     #[error("invalid config search path")]
@@ -17,38 +13,80 @@ pub enum WingmateInitError {
         #[source]
         source: std::io::Error,
         message: String,
+    },
+
+    #[error("parsing cron")]
+    Cron {
+        #[source]
+        source: CronParseError,        
+    },
+
+    #[error("looking for shell")]
+    FindShell {
+        #[source]
+        source: FindShellError,
+    },
+
+    #[error("child exited")]
+    ChildExit {
+        #[source]
+        source: anyhow::Error,
+    },
+
+    #[error("cannot find the child process")]
+    ChildNotFound,
+
+    #[error("failed to setup signal handler")]
+    Signal {
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("no shell available")]
+    NoShellAvailable,
+
+    #[error("problem when join task")]
+    Join {
+        #[source]
+        source: tokio::task::JoinError,
+    },
+
+    #[error("tripped over")]
+    Other {
+        #[source]
+        source: anyhow::Error,
     }
 }
 
-#[derive(Debug,Clone)]
-pub struct CronSyntaxError(pub String);
+#[derive(Error,Debug)]
+pub enum CronParseError {
+    #[error("invalid cron syntax: {}", .0)]
+    InvalidSyntax(String),
+    
+    #[error("cannot capture {} in \"{}\"", field_name, cron_line)]
+    FieldMatch {
+        cron_line: String,
+        field_name: String,
+    },
 
-impl fmt::Display for CronSyntaxError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "cron syntax error at: {}", self.0)
+    #[error("failed to parse {} \"{}\" in \"{}\"", field_name, matched, cron_line)]
+    Parse {
+        #[source]
+        source: anyhow::Error,
+        cron_line: String,
+        matched: String,
+        field_name: String,
     }
 }
 
-impl error::Error for CronSyntaxError {}
+#[derive(Error,Debug)]
+pub enum FindShellError {
+    #[error("shell not found")]
+    ShellNotFound,
 
-#[derive(Debug,Clone)]
-pub struct ShellNotFoundError(pub String);
-
-impl fmt::Display for ShellNotFoundError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "shell not found: {}", self.0)
+    #[error("when finding shell")]
+    Other {
+        #[source]
+        source: anyhow::Error
     }
 }
-
-impl error::Error for ShellNotFoundError {}
-
-#[derive(Debug,Clone)]
-pub struct NoShellAvailableError;
-
-impl fmt::Display for NoShellAvailableError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "no shell available")
-    }
-}
-
-impl error::Error for NoShellAvailableError {}

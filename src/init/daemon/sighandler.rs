@@ -1,13 +1,13 @@
-use std::error;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::select;
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
+use crate::init::error::WingmateInitError;
 
-pub async fn sighandler(flag: Arc<Mutex<bool>>, cancel: CancellationToken, exit: CancellationToken) -> Result<(), Box<dyn error::Error + Send + Sync>> {
-    let mut sigint = signal(SignalKind::interrupt())?; 
-    let mut sigterm = signal(SignalKind::terminate())?;
-    let mut sigchld = signal(SignalKind::child())?;
+pub async fn sighandler(flag: Arc<Mutex<bool>>, cancel: CancellationToken, exit: CancellationToken) -> Result<(), WingmateInitError> {
+    let mut sigint = signal(SignalKind::interrupt()).map_err(|e| { WingmateInitError::Signal { source: e } })?; 
+    let mut sigterm = signal(SignalKind::terminate()).map_err(|e| { WingmateInitError::Signal { source: e } })?;
+    let mut sigchld = signal(SignalKind::child()).map_err(|e| { WingmateInitError::Signal { source: e } })?;
 
     'signal: loop {
         select! {
