@@ -51,7 +51,28 @@ pub enum WingmateInitError {
         source: tokio::task::JoinError,
     },
 
+    #[error("cron config")]
+    CronConfig {
+        #[source]
+        source: CronConfigError,
+    },
+
     #[error("tripped over")]
+    Other {
+        #[source]
+        source: anyhow::Error,
+    }
+}
+
+#[derive(Error,Debug)]
+pub enum CronConfigError {
+    #[error("setting day of week and day of month at the same time will lead to unexpected behavior")]
+    ClashingConfig,
+
+    #[error("when setting time for higher order, the smallest (minute) muste be set")]
+    MissingMinute,
+
+    #[error("something went wrong")]
     Other {
         #[source]
         source: anyhow::Error,

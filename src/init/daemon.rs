@@ -18,15 +18,16 @@ pub async fn start(cfg: config::Config) -> Result<(), WingmateInitError> {
     let waiter_cancel_sighandler = sighandler_cancel.clone();
 
     let cancel = CancellationToken::new();
-    let starter_cancel = cancel.clone();
+    let starter_service_cancel = cancel.clone();
+    let starter_cron_cancel = cancel.clone();
 
     let mut set: JoinSet<Result<(), wmerr::WingmateInitError>> = JoinSet::new();
     set.spawn(async move {
         sighandler::sighandler(sig_sync_flag, cancel, sighandler_cancel).await
     });
 
-    //TODO: start the process starter
-    starter::start_services(&mut set, &cfg, starter_cancel)?;
+    starter::start_services(&mut set, &cfg, starter_service_cancel)?;
+    starter::start_cron(&mut set, &cfg, starter_cron_cancel)?;
 
     //TODO: spawn_blocking for waiter
     set.spawn_blocking(move || {

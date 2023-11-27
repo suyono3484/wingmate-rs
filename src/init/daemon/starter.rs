@@ -1,3 +1,5 @@
+mod time_calc;
+
 use tokio::task::JoinSet;
 use tokio::process::{Command, Child};
 use tokio_util::sync::CancellationToken;
@@ -10,8 +12,9 @@ use nix::sys::signal::{kill, Signal};
 use nix::errno::Errno;
 use nix::unistd::Pid;
 use anyhow::Context;
-use crate::init::config;
-use crate::init::error::WingmateInitError;
+use time::OffsetDateTime;
+use crate::init::config::{self, CronTimeFieldSpec};
+use crate::init::error::{WingmateInitError, CronConfigError};
 
 
 pub fn start_services(ts: &mut JoinSet<Result<(), WingmateInitError>>, cfg: &config::Config, cancel: CancellationToken)
@@ -102,7 +105,37 @@ fn result_match(result: tokio_result<ExitStatus>) -> Result<(), anyhow::Error> {
         }
     }
 
-    dbg!("starter: sleep exited");
+    Ok(())
+}
 
+pub fn start_cron(ts: &mut JoinSet<Result<(), WingmateInitError>>, cfg: &config::Config, cancel: CancellationToken)
+    -> Result<(), WingmateInitError> {
+
+    for c_ in cfg.get_cron_iter() {
+        let shell = cfg.get_shell().ok_or::<WingmateInitError>(WingmateInitError::NoShellAvailable)?;
+        let cron = c_.clone();
+        let cancel = cancel.clone();
+
+        ts.spawn(async move {
+            if cron.day_of_month != config::CronTimeFieldSpec::Any
+                && cron.day_of_week != config::CronTimeFieldSpec::Any {
+                    return Err(WingmateInitError::CronConfig { source: CronConfigError::ClashingConfig });
+            }
+
+            // let cron = cron.clone();
+            let mut last_running: Option<OffsetDateTime> = None;
+            'continuous: loop {
+                let cron = cron.clone();
+                
+                time_calc::wait_calc(cron.clone(), &last_running);
+                select! {
+                    _ = cancel.cancelled() => {
+                        break 'continuous;
+                    }
+                }
+            }
+            Ok(())
+        });
+    }
     Ok(())
 }

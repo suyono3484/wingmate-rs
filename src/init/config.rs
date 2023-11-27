@@ -266,6 +266,10 @@ impl Config {
         self.services.iter()
     }
 
+    pub fn get_cron_iter(&self) -> std::slice::Iter<Crontab> {
+        self.cron.iter()
+    }
+
     pub fn get_shell(&self) -> Option<String> {
         if let Some(shell) = &self.shell_path {
             return Some(shell.clone());
@@ -280,5 +284,86 @@ impl Clone for Command {
             Command::Direct(d) => Command::Direct(String::from(d)),
             Command::ShellPrefixed(s) => Command::ShellPrefixed(String::from(s))
         }
+    }
+}
+
+impl Clone for Crontab {
+    fn clone(&self) -> Self {
+        Self { 
+            minute: self.minute.clone(),
+            hour: self.hour.clone(),
+            day_of_month: self.day_of_month.clone(),
+            month: self.month.clone(),
+            day_of_week: self.day_of_week.clone(),
+            command: self.command.clone()
+        }
+    }
+}
+
+impl Clone for CronTimeFieldSpec {
+    fn clone(&self) -> Self {
+        match self {
+            CronTimeFieldSpec::Any => CronTimeFieldSpec::Any,
+            CronTimeFieldSpec::Every(x) => CronTimeFieldSpec::Every(*x),
+            CronTimeFieldSpec::Exact(x) => CronTimeFieldSpec::Exact(*x),
+            CronTimeFieldSpec::MultiOccurrence(x) => {
+                CronTimeFieldSpec::MultiOccurrence(x.clone())
+            },
+        }
+    }
+}
+
+
+struct CronFieldCmpHelper<'a>(u8, u8, Option<&'a Vec<u8>>);
+impl PartialEq for CronTimeFieldSpec {
+    fn eq(&self, other: &Self) -> bool {
+        let lhs: CronFieldCmpHelper;
+        let rhs: CronFieldCmpHelper;
+        match self {
+            CronTimeFieldSpec::Any => { lhs = CronFieldCmpHelper(0, 0, None); }
+            CronTimeFieldSpec::Every(x) => { lhs = CronFieldCmpHelper(1, *x, None); }
+            CronTimeFieldSpec::Exact(x) => { lhs = CronFieldCmpHelper(2, *x, None); }
+            CronTimeFieldSpec::MultiOccurrence(v) => { lhs = CronFieldCmpHelper(3, 0, Some(v)); }
+        }
+
+        match other {
+            CronTimeFieldSpec::Any => { rhs = CronFieldCmpHelper(0, 0, None); }
+            CronTimeFieldSpec::Every(x) => { rhs = CronFieldCmpHelper(1, *x, None); }
+            CronTimeFieldSpec::Exact(x) => { rhs = CronFieldCmpHelper(2, *x, None); }
+            CronTimeFieldSpec::MultiOccurrence(v) => { rhs = CronFieldCmpHelper(3, 0, Some(v)); }
+        }
+
+        if lhs.0 == rhs.0 {
+            if lhs.0 == 3u8 {
+                if let Some(lv) = lhs.2 {
+                    if let Some(rv) = rhs.2 {
+                        if lv.len() != rv.len() {
+                            return false;
+                        }
+
+                        let mut l_iter = lv.iter();
+                        let mut r_iter = rv.iter();
+                        'item: loop {
+                            if let Some(liv) = l_iter.next() {
+                                if let Some(riv) = r_iter.next() {
+                                    if *liv != *riv {
+                                        return false;
+                                    }
+                                } else {
+                                    break 'item;
+                                }
+                            } else {
+                                break 'item;
+                            }
+                        }
+                        return true;
+                    }
+                }
+            } else {
+                return lhs.1 == rhs.1;
+            }
+        }
+
+        false
     }
 }
