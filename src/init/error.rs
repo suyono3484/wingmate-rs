@@ -57,6 +57,12 @@ pub enum WingmateInitError {
         source: CronConfigError,
     },
 
+    #[error("from nix")]
+    FromNix {
+        #[source]
+        source: nix::Error,
+    },
+
     #[error("tripped over")]
     Other {
         #[source]
