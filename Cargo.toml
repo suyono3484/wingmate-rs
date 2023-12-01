@@ -5,6 +5,15 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "dummy"
+path = "src/bin/test-helper/dummy.rs"
+
+[[bin]]
+name = "spawner"
+path = "src/bin/test-helper/spawner.rs"
+
+
 [dependencies]
 anyhow = "1.0.75"
 lazy_static = "1.4.0"

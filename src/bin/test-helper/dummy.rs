@@ -1,0 +1,11 @@
+use std::{env, thread, time};
+
+
+fn main() {
+    let myi: u64;
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 1 {
+        myi = args[1].parse().unwrap();
+        thread::sleep(time::Duration::from_secs(myi));
+    }
+}
