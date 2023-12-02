@@ -6,12 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [[bin]]
-name = "dummy"
+name = "wmtest-helper-dummy"
 path = "src/bin/test-helper/dummy.rs"
 
 [[bin]]
-name = "spawner"
+name = "wmtest-helper-spawner"
 path = "src/bin/test-helper/spawner.rs"
+
+[[bin]]
+name = "wmtest-helper-log"
+path = "src/bin/test-helper/log.rs"
 
 
 [dependencies]

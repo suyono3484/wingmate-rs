@@ -10,6 +10,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             // println!("spawning {}", _i);
             Command::new("/usr/local/bin/dummy").arg("10").spawn()?;
         }
+    } else {
+        return Err(anyhow::anyhow!("invalid arguments").into());
     }
     Ok(())
 }
