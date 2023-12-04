@@ -15,7 +15,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let log_path = env::var("LOG_PATH")?;
     let file = OpenOptions::new().append(true).create(true).open(log_path)?;
-    WriteLogger::new(LevelFilter::Debug, Config::default(), file);
+    WriteLogger::init(LevelFilter::Debug, Config::default(), file)?;
+
     if args.len() > 1 {
         let x: u64 = args[1].parse()?;
         loop {
