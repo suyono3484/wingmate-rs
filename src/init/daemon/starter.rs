@@ -1,21 +1,24 @@
+use time::error::IndeterminateOffset;
 use tokio::task::JoinSet;
 use tokio::process::{Command, Child};
 use tokio_util::sync::CancellationToken;
 use tokio::select;
 use tokio::io::Result as tokio_result;
 use tokio::time::{sleep, interval};
+use std::env;
 use std::time::Duration;
 use std::process::ExitStatus;
 use nix::sys::signal::{kill, Signal};
 use nix::errno::Errno;
 use nix::unistd::Pid;
 use anyhow::{Context, anyhow};
-use time::{OffsetDateTime, Duration as TimeDur, Weekday};
+use time::{OffsetDateTime, Duration as TimeDur, Weekday, UtcOffset};
 use crate::init::config;
 use crate::init::error::{WingmateInitError, CronConfigError};
 
 
 const CRON_TRIGGER_WAIT_SECS: u64 = 20;
+const ENV_UTC_OFFSET: &'static str = "WINGMATE_TIME_OFFSET";
 
 pub fn start_services(ts: &mut JoinSet<Result<(), WingmateInitError>>, cfg: &config::Config, cancel: CancellationToken)
     -> Result<(), WingmateInitError> {
@@ -111,9 +114,11 @@ fn result_match(result: tokio_result<ExitStatus>) -> Result<(), anyhow::Error> {
 pub fn start_cron(ts: &mut JoinSet<Result<(), WingmateInitError>>, cfg: &config::Config, cancel: CancellationToken)
     -> Result<(), WingmateInitError> {
 
+    dbg!("cron: starting");
     for c_ in cfg.get_cron_iter() {
         let cron = c_.clone();
         let in_loop_cancel = cancel.clone();
+        dbg!("cron: item", c_);
 
         ts.spawn(async move {
             if cron.day_of_month != config::CronTimeFieldSpec::Any
@@ -121,18 +126,35 @@ pub fn start_cron(ts: &mut JoinSet<Result<(), WingmateInitError>>, cfg: &config:
                     return Err(WingmateInitError::CronConfig { source: CronConfigError::ClashingConfig });
             }
 
-            // let cron = cron.clone();
+            dbg!("cron: async task spawned");
+
+            let cron = cron.clone();
             let mut cron_interval = interval(Duration::from_secs(CRON_TRIGGER_WAIT_SECS));
             let mut cron_procs: JoinSet<Result<(), WingmateInitError>> = JoinSet::new();
             let mut last_running: Option<OffsetDateTime> = None;
             'continuous: loop {
                 let cron = cron.clone();
                 let cron_proc_cancel = in_loop_cancel.clone();
+                dbg!("cron: single: in loop", &cron.command);
                 
                 let mut flag = true;
 
-                if let Ok(local_time) = OffsetDateTime::now_local() {
+                let tr: Result<OffsetDateTime, IndeterminateOffset>;
+                if let Ok(offset) = env::var(ENV_UTC_OFFSET) {
+                    if let Ok(i_off) =  offset.parse::<i8>() {
+                        let utc_time = OffsetDateTime::now_utc().to_offset(UtcOffset::from_hms(i_off, 0, 0).unwrap());
+                        tr = Ok(utc_time);
+                    } else {
+                        tr = OffsetDateTime::now_local();
+                    }
+                } else {
+                    tr = OffsetDateTime::now_local();
+                }
+                // let tr = OffsetDateTime::now_local();
+                if let Ok(local_time) = tr {
+                    dbg!("cron: current local time", &local_time);
                     if let Some(last) = last_running {
+                        dbg!("cron: last runing instance", &last);
                         if local_time - last < TimeDur::minutes(1) {
                             flag = false;
                         } else {
@@ -141,14 +163,25 @@ pub fn start_cron(ts: &mut JoinSet<Result<(), WingmateInitError>>, cfg: &config:
                                 cron.day_of_month.is_match(local_time.day()) &&
                                 cron.day_of_week.is_match(weekday_map(local_time.weekday()));
                         }
+                    } else {
+                        flag = flag && cron.minute.is_match(local_time.minute()) &&
+                            cron.hour.is_match(local_time.hour()) &&
+                            cron.day_of_month.is_match(local_time.day()) &&
+                            cron.day_of_week.is_match(weekday_map(local_time.weekday()));
                     }
 
                     if flag {
+                        dbg!("cron: timing: hit: {}", &cron.command);
                         last_running = Some(local_time);
                         cron_procs.spawn(async move {
                             run_cron_command(cron.command.clone(), cron_proc_cancel).await
                         });
                     }    
+                } else {
+                    dbg!("cron: unexpected error");
+                    if let Err(e) = tr {
+                        dbg!(e);
+                    }
                 }
 
                 if cron_procs.is_empty() {
@@ -209,6 +242,7 @@ async fn run_cron_command(command: String, cancel: CancellationToken) -> Result<
         }
     }
 
+    dbg!("cron: in running command");
     if args.is_empty() {
         return Err(WingmateInitError::Other { source: anyhow!("parsed as empty: {}", command) });
     }

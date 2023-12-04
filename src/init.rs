@@ -27,6 +27,6 @@ pub async fn start() -> Result<(), error::WingmateInitError> {
     }
 
     let config = config::Config::find(vec_search)?;
-    dbg!(&config);
+    // dbg!(&config);
     daemon::start(config).await
 }

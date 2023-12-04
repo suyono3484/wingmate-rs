@@ -19,22 +19,21 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if args.len() > 1 {
         let x: u64 = args[1].parse()?;
-        loop {
-            for _i in 0..x {
-                let sleep_time = rng.gen_range(10..20);
-                info!("starting wmtest-helper-dummy {}", &sleep_time);
-                let child = Command::new("/usr/local/bin/wmtest-helper-dummy").arg(format!("{}", sleep_time)).spawn();
-                if let Err(e) = child {
-                    error!("error spawning child: {e}");
-                }
+        for _i in 0..x {
+            let sleep_time = rng.gen_range(10..20);
+            info!("starting wmtest-helper-dummy {}", &sleep_time);
+            let child = Command::new("/usr/local/bin/wmtest-helper-dummy").arg(format!("{}", sleep_time)).spawn();
+            if let Err(e) = child {
+                error!("error spawning child: {e}");
             }
-
-            let pause_time = rng.gen_range(10..20);
-            info!("going to sleep for {}", &pause_time);
-            std::thread::sleep(std::time::Duration::from_secs(pause_time));
-            info!("waking up")
         }
+
+        let pause_time = rng.gen_range(5..10);
+        info!("going to sleep for {}", &pause_time);
+        std::thread::sleep(std::time::Duration::from_secs(pause_time));
     } else {
         return Err(anyhow::anyhow!("invalid arguments").into());
     }
+
+    Ok(())
 }

@@ -27,6 +27,6 @@ rand = "0.8.5"
 regex = "1.10.2"
 simplelog = "0.12.1"
 thiserror = "1.0.50"
-time = { version = "0.3.30", features = ["local-offset"]}
+time = { version = "0.3.30", features = ["local-offset", "macros"]}
 tokio = { version = "1.34.0", features = ["full"] }
 tokio-util = "0.7.10"
