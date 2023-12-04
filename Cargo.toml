@@ -21,8 +21,11 @@ path = "src/bin/test-helper/log.rs"
 [dependencies]
 anyhow = "1.0.75"
 lazy_static = "1.4.0"
-nix = {version = "0.27.1", features = ["process", "signal", "fs"]}
+log = { version = "0.4.20", features = ["std"]}
+nix = { version = "0.27.1", features = ["process", "signal", "fs"]}
+rand = "0.8.5"
 regex = "1.10.2"
+simplelog = "0.12.1"
 thiserror = "1.0.50"
 time = { version = "0.3.30", features = ["local-offset"]}
 tokio = { version = "1.34.0", features = ["full"] }
